@@ -98,7 +98,7 @@
                   </manifestEntries>
                </archive>
                <appendAssemblyId>false</appendAssemblyId>
-               <attach>false</attach>
+               <attach>true</attach>
             </configuration>
             <executions>
                <execution>

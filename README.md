@@ -17,7 +17,7 @@ java -jar nxshell-7.0.4.jar             # interactive shell
 java -jar nxshell-7.0.4.jar script.py   # run a script
 ```
 
-The connected session is available as `session` (and `s`). Connection settings are taken from system properties or `nxshell.properties` (current directory or classpath; `-Dnxshell.properties=<file>` adds another one):
+The connected session is available as `session` (and `s`). Settings are taken from `nxshell.properties` (current directory or classpath), then from the file given by `-Dnxshell.properties=<file>`, then from `-D` system properties; later sources win:
 
 | Property | Default |
 |---|---|
@@ -29,4 +29,4 @@ The connected session is available as `session` (and `s`). Connection settings a
 | `netxms.enableCompression` | `true` |
 | `netxms.syncObjects` | `true` |
 | `nxshell.interactive` | force interactive prompts |
-| `nxshell.debug` | debug logging |
+| `nxshell.debug` | debug logging (`-D` only) |

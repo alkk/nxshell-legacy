@@ -24,13 +24,13 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
+import java.nio.file.Files;
 import java.util.Properties;
 import org.netxms.base.VersionInfo;
 import org.netxms.client.NXCException;
 import org.netxms.client.NXCSession;
 import org.python.core.Py;
 import org.python.core.PyException;
-import org.python.core.PyFile;
 import org.python.core.PySystemState;
 import org.python.core.imp;
 import org.python.util.InteractiveConsole;
@@ -55,11 +55,11 @@ public class Shell
       final Shell shell = new Shell();
       try
       {
-         shell.configuration.putAll(System.getProperties());
          shell.configuration.putAll(loadProperties("nxshell.properties"));
-         String customPropertyFile = shell.configuration.getProperty("nxshell.properties");
+         String customPropertyFile = System.getProperty("nxshell.properties");
          if (customPropertyFile != null)
             shell.configuration.putAll(loadProperties(customPropertyFile));
+         shell.configuration.putAll(System.getProperties());
          shell.run(args);
       }
       catch(PyException e)
@@ -212,9 +212,21 @@ public class Shell
 
    private boolean isInteractive()
    {
-      if (System.getProperties().getProperty("nxshell.interactive") != null)
+      if (configuration.getProperty("nxshell.interactive") != null)
          return true;
-      return ((PyFile)Py.defaultSystemState.stdin).isatty();
+      // Jython's own isatty() check always fails on modern JDKs (reflective access to System.in is blocked)
+      final Console console = System.console();
+      if (console == null)
+         return false;
+      try
+      {
+         // JDK 22+ may return a console for redirected streams; isTerminal() tells them apart
+         return (Boolean)Console.class.getMethod("isTerminal").invoke(console);
+      }
+      catch(ReflectiveOperationException e)
+      {
+         return true;
+      }
    }
 
    private InteractiveConsole createInterpreter()
@@ -257,11 +269,12 @@ public class Shell
       return console;
    }
 
-   private void initJython(String[] args)
+   private void initJython(String[] args) throws IOException
    {
       final Properties postProperties = new Properties();
-      final File tempDirectory = new File(configuration.getProperty("java.io.tmpdir"));
-      final File cacheDir = new File(tempDirectory, "nxshell");
+      File cacheDir = new File(System.getProperty("user.home"), ".cache/nxshell");
+      if (!cacheDir.isDirectory() && !cacheDir.mkdirs())
+         cacheDir = Files.createTempDirectory("nxshell").toFile();
       postProperties.setProperty("python.cachedir", cacheDir.getPath());
       postProperties.setProperty("python.cachedir.skip", "false");
       PySystemState.initialize(PySystemState.getBaseProperties(), postProperties, args);
