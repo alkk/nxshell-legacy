@@ -29,6 +29,7 @@ import org.netxms.base.VersionInfo;
 import org.netxms.client.NXCException;
 import org.netxms.client.NXCSession;
 import org.python.core.Py;
+import org.python.core.PyException;
 import org.python.core.PyFile;
 import org.python.core.PySystemState;
 import org.python.core.imp;
@@ -49,9 +50,6 @@ public class Shell
    private String optPassword;
    private String optToken;
 
-   /**
-    * @param args
-    */
    public static void main(String[] args)
    {
       final Shell shell = new Shell();
@@ -64,18 +62,19 @@ public class Shell
             shell.configuration.putAll(loadProperties(customPropertyFile));
          shell.run(args);
       }
-      catch(Throwable e)
+      catch(PyException e)
       {
-         // nosemgrep: java.lang.security.audit.active-debug-code-printstacktrace.active-debug-code-printstacktrace -- top-level CLI handler; stderr stack trace is expected user-facing output
-         e.printStackTrace();
+         // Exits with the requested code on SystemExit, prints Python traceback otherwise
+         Py.printException(e);
+         System.exit(1);
+      }
+      catch(Exception e)
+      {
+         System.err.println("Error: " + (e.getMessage() != null ? e.getMessage() : e.toString()));
+         System.exit(1);
       }
    }
 
-   /**
-    * @param args
-    * @throws IOException
-    * @throws NetXMSClientException
-    */
    private void run(String[] args) throws IOException, NXCException
    {
       initJython(args);
@@ -90,7 +89,7 @@ public class Shell
 
       final NXCSession session = connect();
 
-      final InteractiveConsole console = createInterpreter(args);
+      final InteractiveConsole console = createInterpreter();
 
       console.set("session", session);
       console.set("s", session);
@@ -108,9 +107,6 @@ public class Shell
       session.disconnect();
    }
 
-   /**
-    * @param interactive
-    */
    private void readCredentials()
    {
       optServer = configuration.getProperty("netxms.server");
@@ -161,19 +157,11 @@ public class Shell
       }
    }
 
-   /**
-    * @return
-    */
    private String getBanner()
    {
       return "NetXMS " + VersionInfo.version() + " Interactive Shell";
    }
 
-   /**
-    * @return
-    * @throws IOException
-    * @throws NetXMSClientException
-    */
    private NXCSession connect() throws IOException, NXCException
    {
       boolean enableCompression = true;
@@ -222,9 +210,6 @@ public class Shell
       return session;
    }
 
-   /**
-    * @return
-    */
    private boolean isInteractive()
    {
       if (System.getProperties().getProperty("nxshell.interactive") != null)
@@ -232,20 +217,9 @@ public class Shell
       return ((PyFile)Py.defaultSystemState.stdin).isatty();
    }
 
-   /**
-    * @param args
-    * @return
-    */
-   private InteractiveConsole createInterpreter(String args[])
+   private InteractiveConsole createInterpreter()
    {
-      PySystemState systemState = Py.getSystemState();
-
-      final InteractiveConsole console;
-      if (!isInteractive())
-      {
-         systemState.ps1 = systemState.ps2 = Py.EmptyString;
-      }
-      console = new InteractiveConsole();
+      final InteractiveConsole console = new InteractiveConsole();
       Py.getSystemState().__setattr__("_jy_interpreter", Py.java2py(console));
       imp.load("site");
 
@@ -283,9 +257,6 @@ public class Shell
       return console;
    }
 
-   /**
-    * @param args
-    */
    private void initJython(String[] args)
    {
       final Properties postProperties = new Properties();
@@ -304,43 +275,25 @@ public class Shell
     */
    private static Properties loadProperties(String name)
    {
-      ClassLoader classLoader = Shell.class.getClassLoader();
       Properties properties = new Properties();
-      InputStream stream = null;
-      try
+      try (InputStream stream = openPropertiesFile(name))
       {
-         stream = classLoader.getResourceAsStream(name);
-         if (stream == null)
-         {
-            File f = new File(name);
-            if (f.isFile())
-            {
-               stream = new FileInputStream(f);
-            }
-         }
          if (stream != null)
-         {
             properties.load(stream);
-         }
       }
       catch(Exception e)
       {
-         System.err.println("Error loading properties file " + name);
-         e.printStackTrace();
-      }
-      finally
-      {
-         if (stream != null)
-         {
-            try
-            {
-               stream.close();
-            }
-            catch(IOException e)
-            {
-            }
-         }
+         System.err.println("Error loading properties file " + name + ": " + e.getMessage());
       }
       return properties;
+   }
+
+   private static InputStream openPropertiesFile(String name) throws IOException
+   {
+      InputStream stream = Shell.class.getClassLoader().getResourceAsStream(name);
+      if (stream != null)
+         return stream;
+      File f = new File(name);
+      return f.isFile() ? new FileInputStream(f) : null;
    }
 }
